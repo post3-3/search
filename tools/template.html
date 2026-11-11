@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3+3 郵遞區號查詢器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --g9:#063d24; --g8:#0a4f30; --g7:#0d6239; --g6:#127a48; --g1:#e8f3ec; --g0:#f3f8f4;
+  --bg:#f2f4f1; --card:#fff; --ink:#17231c; --muted:#66746b; --line:#dde5df;
+  --warn:#9a5b00; --warn-soft:#fff5e3; --bad:#b42318; --bad-soft:#fdeceb;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.55}
+header{background:linear-gradient(135deg,var(--g9),var(--g7));color:#fff;padding:30px 18px 64px;text-align:center}
+header h1{margin:0;font-size:30px;font-weight:900;letter-spacing:.04em;display:flex;align-items:center;justify-content:center;gap:12px}
+header h1 svg{flex:none}
+header p{margin:6px 0 0;font-size:14px;color:#cfe6d8}
+header a{color:#fff}
+header .ver{margin-top:2px;font-size:13px;color:#a9d0b9}
+.wrap{max-width:860px;margin:-44px auto 0;padding:0 16px 60px;position:relative}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 1px 2px rgba(6,61,36,.04),0 6px 20px rgba(6,61,36,.05)}
+.tabs{display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:14px;box-shadow:0 6px 20px rgba(6,61,36,.06)}
+.tabs button{flex:1;border:none;background:none;border-radius:10px;padding:10px 6px;font:inherit;font-weight:500;font-size:15px;color:var(--muted);cursor:pointer}
+.tabs button.on{background:var(--g7);color:#fff}
+.tabs button:not(.on):hover{background:var(--g0);color:var(--g7)}
+.label{font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:500}
+input[type=text],textarea{width:100%;font:inherit;font-size:17px;padding:13px 15px;border:1.5px solid var(--line);border-radius:11px;outline:none;background:#fff;color:var(--ink)}
+textarea{font-size:15px;min-height:170px;resize:vertical}
+input[type=text]:focus,textarea:focus{border-color:var(--g6);box-shadow:0 0 0 4px var(--g1)}
+button{font:inherit;cursor:pointer}
+.btn{border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.btn{white-space:nowrap}
+.btn svg{width:16px;height:16px;flex:none}
+.btn:hover{border-color:var(--g6);color:var(--g7)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.primary{display:block;margin:16px auto 0;background:var(--g7);border:none;color:#fff;font-size:17px;font-weight:700;padding:13px 0;width:220px;max-width:100%;border-radius:12px;letter-spacing:.2em;box-shadow:0 4px 12px rgba(13,98,57,.25)}
+.primary:hover{background:var(--g8)}
+.primary:disabled{opacity:.45;cursor:not-allowed}
+.recent{margin-top:12px;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.recent button{font-size:13px;padding:3px 10px;border-radius:99px;background:var(--g0);border:1px solid var(--g1);color:var(--g8);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent button:hover{background:var(--g1)}
+.status{font-size:12px;color:var(--muted);text-align:center;margin-top:4px}
+.result{display:none}
+.field{margin-bottom:16px}
+.val{display:flex;align-items:flex-start;gap:8px}
+.std{font-size:21px;font-weight:700}
+.en{font-size:15px;color:#33443a}
+.zip{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:56px;font-weight:700;color:var(--g7);letter-spacing:.08em;line-height:1.05}
+.ic{flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:#fff;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);padding:0}
+.ic:hover{border-color:var(--g6);color:var(--g7);background:var(--g0)}
+.ic svg{width:17px;height:17px}
+.zrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.zipcard{background:var(--g0);border:1px solid var(--g1);border-radius:12px;padding:14px 16px}
+.note{font-size:13px;margin-top:10px;padding:9px 12px;border-radius:9px}
+.note.warn{background:var(--warn-soft);color:var(--warn)}
+.note.bad{background:var(--bad-soft);color:var(--bad)}
+.note.info{background:var(--g0);color:var(--g8)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:12px;position:sticky;top:0;background:#fff;z-index:1}
+td.z{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--g7);white-space:nowrap}
+td.err{color:var(--bad)}
+td.wn{color:var(--warn)}
+td small{display:block;color:var(--muted);font-size:12px}
+td.act{white-space:nowrap;text-align:right}
+td.act .ic{width:30px;height:30px}
+.scroll{max-height:440px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.toolbar .sp{flex:1}
+.drop{border:2px dashed #bcd6c5;border-radius:12px;padding:16px;text-align:center;background:var(--g0);color:var(--muted);font-size:14px;margin-bottom:12px;transition:.15s}
+.drop.over{border-color:var(--g6);background:var(--g1)}
+.drop b{color:var(--g7)}
+.fileinfo{font-size:13px;color:var(--g8);margin-top:8px}
+.empty{color:var(--muted);text-align:center;padding:30px 0;font-size:14px}
+.foot{font-size:12px;color:var(--muted);text-align:center;margin-top:18px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--g9);color:#fff;padding:9px 18px;border-radius:9px;font-size:14px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
+.hidden{display:none!important}
+@media (max-width:540px){.zip{font-size:44px}header h1{font-size:23px}.std{font-size:18px}.card{padding:16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1><svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect x="3" y="8" width="30" height="21" rx="3" stroke="#fff" stroke-width="2.4"/><path d="M4.5 10l13.5 10 13.5-10" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>3+3 郵遞區號查詢器</h1>
+  <p>資料來源：<a href="https://www.post.gov.tw/post/internet/Postal/index.jsp?ID=208" target="_blank" rel="noopener">中華郵政 3+3 郵遞區號</a></p>
+  <p class="ver"><span id="status">資料載入中…</span>　更新日期：民國 115 年 11 月 11 日</p>
+</header>
+
+<div class="wrap">
+  <div class="tabs">
+    <button class="on" data-tab="one">單筆查詢</button>
+    <button data-tab="batch">批次查詢</button>
+    <button data-tab="hist">查詢紀錄</button>
+  </div>
+
+  <!-- 單筆 -->
+  <section id="tab-one">
+    <div class="card">
+      <div class="label">輸入完整地址</div>
+      <form id="form">
+        <input type="text" id="addr" placeholder="例：基隆市中正區北寧路2號" autocomplete="off">
+        <button class="primary" id="go" type="submit" disabled>查詢</button>
+      </form>
+    </div>
+    <div class="card result" id="result"></div>
+  </section>
+
+  <!-- 批次 -->
+  <section id="tab-batch" class="hidden">
+    <div class="card">
+      <div class="drop" id="drop">
+        拖曳 <b>Excel（.xlsx / .xls）</b>、<b>CSV</b> 或 <b>TXT</b> 檔到這裡，或
+        <button class="btn" id="pick" type="button" style="margin-left:4px">選擇檔案</button>
+        <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt" hidden>
+        <div class="fileinfo" id="fileinfo"></div>
+      </div>
+      <div class="label">或直接貼上，一行一個地址</div>
+      <textarea id="batchIn" placeholder="基隆市中正區北寧路2號&#10;臺北市中山區一江街25號&#10;..."></textarea>
+      <button class="primary" id="batchGo" disabled>批次查詢</button>
+    </div>
+    <div class="card result" id="batchOut"></div>
+  </section>
+
+  <!-- 紀錄 -->
+  <section id="tab-hist" class="hidden">
+    <div class="card">
+      <div class="toolbar" style="margin-top:0;margin-bottom:12px">
+        <div class="label" id="histCount" style="margin:0">查詢紀錄</div>
+        <span class="sp"></span>
+        <button class="btn" id="histCopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg> 複製全部</button>
+        <button class="btn" id="histClear" style="color:var(--bad)">清除紀錄</button>
+      </div>
+      <div id="histList"></div>
+    </div>
+  </section>
+
+  <p class="foot">比對官方「投遞範圍」規則（單雙號、連續號、巷弄、附號、樓層），並自動校正錯字與舊縣市名稱。<br>查詢紀錄只存在這個瀏覽器。重要郵件寄出前，建議以中華郵政官網再確認一次。</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script id="zipdata" type="application/octet-stream">__DATA__</script>
+<script>
+/* ============ 文字正規化 ============ */
+const CN = {零:0,〇:0,一:1,二:2,兩:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};
+function cn2num(s){
+  if(!/[十百千]/.test(s)) return Number([...s].map(c=>CN[c]).join(''));
+  let total=0, cur=0;
+  for(const c of s){
+    if(c in CN) cur=CN[c];
+    else if(c==='十'){total+=(cur||1)*10;cur=0;}
+    else if(c==='百'){total+=(cur||1)*100;cur=0;}
+    else if(c==='千'){total+=(cur||1)*1000;cur=0;}
+  }
+  return total+cur;
+}
+function norm(s){
+  if(s==null) return '';
+  s = String(s)
+    .replace(/[！-～]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+    .replace(/　/g,' ')
+    .replace(/台/g,'臺')
+    .replace(/\s+/g,'');
+  s = s.replace(/([零〇一二兩三四五六七八九十百千]+)(段|巷|弄|號|樓|鄰|之)/g,(m,n,u)=>cn2num(n)+u);
+  s = s.replace(/之([零〇一二兩三四五六七八九十百]+)/g,(m,n)=>'之'+cn2num(n));
+  return s;
+}
+
+/* ============ 資料 ============ */
+let INDEX=null, ALIAS=new Map(), DATAVER='', NROWS=0;
+const OLD_CITY={'臺北縣':'新北市','桃園縣':'桃園市','臺中縣':'臺中市','臺南縣':'臺南市','高雄縣':'高雄市'};
+
+async function loadData(){
+  const b64=document.getElementById('zipdata').textContent.trim();
+  const bin=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  const ds=new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const obj=JSON.parse(await new Response(ds).text());
+  initData(obj);
+}
+function initData(obj){
+  DATAVER=obj.v;
+  INDEX=new Map();
+  for(const [city,ecity,areas] of obj.d){
+    const A=new Map();
+    for(const [area,earea,roads] of areas){
+      const R=new Map();
+      for(const [road,eroad,rules] of roads){ R.set(norm(road),{name:road,en:eroad,rules}); NROWS+=rules.length; }
+      A.set(norm(area),{name:area,en:earea,roads:R});
+    }
+    INDEX.set(norm(city),{name:city,en:ecity,areas:A});
+  }
+  for(const k in obj.a){
+    const [c,a]=k.split('|'); const m=new Map();
+    for(const w in obj.a[k]) m.set(norm(w),norm(obj.a[k][w]));
+    ALIAS.set(norm(c)+'|'+norm(a),m);
+  }
+}
+
+/* ============ 地址解析 ============ */
+function parseAddress(input){
+  let s=norm(input);
+  s=s.replace(/\([^)]*\)/g,'').replace(/[「」『』【】\[\]]/g,'');
+  s=s.replace(/^\d{3,6}/,'').replace(/^(臺灣省?|中華民國)/,'');
+  s=s.replace(/(\d+)-(\d+)號/g,'$1之$2號').replace(/(\d+)號-(\d+)/g,'$1號之$2').replace(/(\d+)[Ff](?![a-z])/g,'$1樓');
+  const out={input,s,city:null,area:null,road:null,roadName:null,lane:null,laneSub:0,alley:null,alleySub:0,num:null,sub:0,floor:null,notes:[]};
+  let rest=s;
+
+  // 縣市
+  for(const old in OLD_CITY) if(rest.startsWith(old)){ rest=OLD_CITY[old]+rest.slice(old.length); out.notes.push('「'+old+'」已改制為「'+OLD_CITY[old]+'」'); break; }
+  const cities=[...INDEX.keys()];
+  const c=cities.filter(x=>rest.startsWith(x)).sort((a,b)=>b.length-a.length)[0];
+  if(c){out.city=c; rest=rest.slice(c.length);}
+
+  // 鄉鎮市區
+  const tryArea=(city)=>{
+    const areas=INDEX.get(city).areas;
+    let a=[...areas.keys()].filter(x=>rest.startsWith(x)).sort((x,y)=>y.length-x.length)[0];
+    if(a) return [a,a.length];
+    // 改制前：板橋市 → 板橋區
+    for(const k of areas.keys()){
+      if(k.endsWith('區')){ const base=k.slice(0,-1); const m=rest.match(new RegExp('^'+base+'(市|鎮|鄉)')); if(m) return [k,m[0].length,true]; }
+    }
+    return null;
+  };
+  if(out.city){
+    const a=tryArea(out.city);
+    if(a){out.area=a[0]; rest=rest.slice(a[1]); if(a[2]) out.notes.push('已改用新行政區名「'+INDEX.get(out.city).areas.get(a[0]).name+'」');}
+  }else{
+    const hits=[];
+    for(const city of cities){const a=tryArea(city); if(a) hits.push([city,a]);}
+    if(hits.length===1){out.city=hits[0][0]; out.area=hits[0][1][0]; rest=rest.slice(hits[0][1][1]);}
+    else if(hits.length>1) out.ambiguousArea=hits.map(h=>INDEX.get(h[0]).name);
+  }
+  if(!out.city) return out;
+
+  // 路街（找最長、最早出現的路名；找不到再查錯字對照）
+  const pools=[];
+  if(out.area) pools.push(out.area); else pools.push(...INDEX.get(out.city).areas.keys());
+  const findRoad=(useAlias)=>{
+    let best=null;
+    for(const ar of pools){
+      const roads=INDEX.get(out.city).areas.get(ar).roads;
+      const cand = useAlias ? (ALIAS.get(out.city+'|'+ar)||new Map()) : roads;
+      for(const key of cand.keys()){
+        if(!key) continue;
+        const k=rest.indexOf(key); if(k<0) continue;
+        const target = useAlias ? cand.get(key) : key;
+        if(!best || key.length>best.len || (key.length===best.len && k<best.k)) best={road:target,len:key.length,k,ar,typed:key};
+      }
+    }
+    return best;
+  };
+  let best=findRoad(false), viaAlias=false;
+  // 若路名後面緊接的不是巷弄號等，可能是錯字／簡寫路名更長，試別名
+  const alt=findRoad(true);
+  if(alt && (!best || alt.len>best.len)){ best=alt; viaAlias=true; }
+  if(best){
+    if(!out.area){
+      const others=pools.filter(ar=>INDEX.get(out.city).areas.get(ar).roads.has(best.road));
+      if(others.length>1) out.ambiguousRoad=others.map(ar=>INDEX.get(out.city).areas.get(ar).name);
+      out.area=best.ar;
+    }
+    out.road=best.road;
+    out.roadName=INDEX.get(out.city).areas.get(out.area).roads.get(best.road).name;
+    if(viaAlias) out.notes.push('「'+best.typed+'」已校正為「'+out.roadName+'」');
+    rest=rest.slice(best.k+best.len);
+  }
+  out.rest=rest;
+  let m;
+  if(m=rest.match(/(\d+)(?:之(\d+))?巷/)){ out.lane=+m[1]; out.laneSub=m[2]?+m[2]:0; }
+  if(m=rest.match(/(\d+)(?:之(\d+))?弄/)){ out.alley=+m[1]; out.alleySub=m[2]?+m[2]:0; }
+  if(m=rest.match(/(\d+)(?:之(\d+))?號(?:之(\d+))?/)){ out.num=+m[1]; out.sub=+(m[2]||m[3]||0); }
+  if(m=rest.match(/(?:地下|B)(\d*)樓?/i)) out.floor=-(+(m[1]||1));
+  else if(m=rest.match(/(\d+)樓/)) out.floor=+m[1];
+  return out;
+}
+
+/* ============ 投遞範圍解析 ============ */
+const P='(\\d+)(?:之(\\d+))?(號|巷|弄)';
+const RE_RANGE=new RegExp('^'+P+'至(?:'+P+'|之(\\d+)號)$');
+const RE_GE=new RegExp('^'+P+'以上$'), RE_LE=new RegExp('^'+P+'以下$'), RE_EX=new RegExp('^'+P+'$');
+const RE_SUBGE=new RegExp('^'+P+'及以上附號$');
+const SCOPE_CACHE=new Map();
+function parseScope(raw){
+  if(SCOPE_CACHE.has(raw)) return SCOPE_CACHE.get(raw);
+  let s=norm(raw);
+  const r={raw,kind:null,parity:null,lane:null,laneSub:0,alley:null,alleySub:0,lo:null,hi:null,withSub:false,floor:null};
+  // 樓層
+  const fm=s.match(/(地下)?(\d+)樓(?:(以上|以下)|至(地下)?(\d+)樓)?$/);
+  if(fm && fm.index>0){
+    const v1=(fm[1]?-1:1)*+fm[2];
+    if(fm[3]==='以上') r.floor={lo:v1,hi:999};
+    else if(fm[3]==='以下') r.floor={lo:1,hi:v1};
+    else if(fm[5]) r.floor={lo:v1,hi:(fm[4]?-1:1)*+fm[5]};
+    else r.floor={lo:v1,hi:v1};
+    s=s.slice(0,fm.index);
+  }
+  if(s.includes('含附號')){ r.withSub=true; s=s.replace('含附號',''); }
+  // 巷、弄前綴（後面不是 至／以上／以下 才算前綴）
+  let m=s.match(/^(\d+)(?:之(\d+))?巷/);
+  if(m && !/^(至|以上|以下)/.test(s.slice(m[0].length))){ r.lane=+m[1]; r.laneSub=m[2]?+m[2]:0; s=s.slice(m[0].length); }
+  m=s.match(/^(\d+)(?:之(\d+))?弄/);
+  if(m && !/^(至|以上|以下)/.test(s.slice(m[0].length))){ r.alley=+m[1]; r.alleySub=m[2]?+m[2]:0; s=s.slice(m[0].length); }
+  m=s.match(/^(單|雙|連)/); if(m){ r.parity=m[1]; s=s.slice(1); }
+  const pt=(a,b)=>({n:+a, s:b?+b:0});
+  if(s===''||s==='全') r.kind = (r.parity==='單'||r.parity==='雙')?'parity':'all';
+  else if(m=s.match(/^(\d+)附號$/)) { r.kind='subGe'; r.lo=pt(m[1],1); }
+  else if(m=s.match(RE_SUBGE)) { r.kind='subGe'; r.lo=pt(m[1],m[2]); }
+  else if(m=s.match(RE_RANGE)) { r.kind='range'; r.lo=pt(m[1],m[2]); r.hi = m[7]!=null ? pt(m[1],m[7]) : pt(m[4],m[5]); }
+  else if(m=s.match(RE_GE)) { r.kind='ge'; r.lo=pt(m[1],m[2]); }
+  else if(m=s.match(RE_LE)) { r.kind='le'; r.hi=pt(m[1],m[2]); }
+  else if(m=s.match(RE_EX)) { r.kind='exact'; r.lo=r.hi=pt(m[1],m[2]); r.unit=m[3]; }
+  else r.kind='unknown';
+  SCOPE_CACHE.set(raw,r);
+  return r;
+}
+
+const cmp=(a,b)=>(a.n-b.n)||(a.s-b.s);
+function matchScope(sc, ad){
+  if(sc.kind==='unknown') return null;
+  let score=0, v=null;
+  // 前綴篩選：巷、弄
+  if(sc.lane!=null){
+    if(ad.lane!==sc.lane || ad.laneSub!==sc.laneSub) return null;
+    score+=200;
+  }
+  if(sc.alley!=null){
+    if(ad.alley!==sc.alley || ad.alleySub!==sc.alleySub) return null;
+    score+=200;
+  }
+  // 比對軸：前綴之後最外層的門牌元素（巷 → 弄 → 號）
+  const N=ad.num!=null?{n:ad.num,s:ad.sub,u:'號'}:null, AL=ad.alley!=null?{n:ad.alley,s:ad.alleySub,u:'弄'}:null, LA=ad.lane!=null?{n:ad.lane,s:ad.laneSub,u:'巷'}:null;
+  if(sc.alley!=null) v = N;
+  else if(sc.lane!=null) v = AL||N;
+  else v = LA||AL||N;
+
+  if(sc.kind==='all'){ score+=10; }
+  else if(!v){
+    if(sc.kind!=='parity') return null;
+    score+=5;
+  }else{
+    if(sc.parity==='單' && v.n%2!==1) return null;
+    if(sc.parity==='雙' && v.n%2!==0) return null;
+    const inHi=()=>cmp(v,sc.hi)<=0 || (sc.withSub && v.n===sc.hi.n);
+    switch(sc.kind){
+      case 'parity': score+=20; break;
+      case 'exact': if(sc.unit==='號' && v.u!=='號') return null; if(sc.withSub ? v.n!==sc.lo.n : cmp(v,sc.lo)!==0) return null; score+=100; break;
+      case 'subGe': if(v.u!=='號') return null; if(v.n!==sc.lo.n || v.s<sc.lo.s) return null; score+=95; break;
+      case 'range': if(cmp(v,sc.lo)<0 || !inHi()) return null; score+=60-Math.min(15,Math.log2(1+Math.abs(sc.hi.n-sc.lo.n))); break;
+      case 'ge': if(cmp(v,sc.lo)<0) return null; score+=40; break;
+      case 'le': if(!inHi()) return null; score+=40; break;
+    }
+  }
+  let floorUnknown=false;
+  if(sc.floor){
+    if(ad.floor==null){ floorUnknown=true; score-=70; }
+    else if(ad.floor<sc.floor.lo || ad.floor>sc.floor.hi) return null;
+    else score+=20;
+  }
+  return {score,floorUnknown};
+}
+
+/* ============ 查詢 ============ */
+function lookup(input){
+  const ad=parseAddress(input);
+  const res={ad,hits:[],all:[],notes:ad.notes.map(m=>({t:'info',m}))};
+  if(!ad.city){
+    res.error = ad.ambiguousArea ? '「'+ad.ambiguousArea.join('、')+'」都有這個鄉鎮市區，請加上縣市' : '找不到縣市，請確認地址開頭是否為縣市名稱（如「臺北市」）';
+    return res;
+  }
+  if(!ad.road){
+    const cn=INDEX.get(ad.city).name, an=ad.area?INDEX.get(ad.city).areas.get(ad.area).name:'';
+    res.error='在「'+cn+an+'」找不到對應的路街名稱'+(ad.area?'':'（也沒有辨識到鄉鎮市區）');
+    return res;
+  }
+  if(ad.ambiguousRoad) res.notes.push({t:'warn',m:'地址沒有寫鄉鎮市區，「'+ad.roadName+'」在 '+ad.ambiguousRoad.join('、')+' 都有，先以 '+INDEX.get(ad.city).areas.get(ad.area).name+' 比對，建議補上區名。'});
+  let entry=INDEX.get(ad.city).areas.get(ad.area).roads.get(ad.road);
+  res.all=entry.rules.map((x,i)=>({i,zip:x[0],raw:x[1],sc:parseScope(x[1])}));
+  const run=a=>res.all.map(x=>({...x,m:matchScope(x.sc,a)})).filter(x=>x.m);
+  let hits=run(ad);
+  if(!hits.length && ad.sub){
+    hits=run({...ad,sub:0});
+    if(hits.length) res.notes.push({t:'warn',m:'沒有 '+ad.num+'之'+ad.sub+'號 的專屬規則，改以 '+ad.num+'號 比對。'});
+  }
+  if(!hits.length && ad.floor!=null) hits=run({...ad,floor:null});
+  // 寫的區找不到門牌 → 同縣市其他區的同名路
+  if(!hits.length && !ad.ambiguousRoad){
+    const C=INDEX.get(ad.city);
+    for(const [ak,A] of C.areas){
+      if(ak===ad.area || !A.roads.has(ad.road)) continue;
+      const all2=A.roads.get(ad.road).rules.map((x,i)=>({i,zip:x[0],raw:x[1],sc:parseScope(x[1])}));
+      const h2=all2.map(x=>({...x,m:matchScope(x.sc,ad)})).filter(x=>x.m);
+      if(h2.length){
+        res.notes.push({t:'warn',m:'地址寫「'+C.areas.get(ad.area).name+'」，但這個門牌在「'+A.name+'」的投遞範圍內，已改用'+A.name+'。'});
+        ad.area=ak; res.all=all2; hits=h2; break;
+      }
+    }
+  }
+  hits.sort((a,b)=>b.m.score-a.m.score);
+  res.hits=hits;
+  if(!hits.length){
+    res.error = (ad.num==null && ad.lane==null && ad.alley==null)
+      ? '「'+entry.name+'」依門牌分成不同郵遞區號，請輸入門牌號碼'
+      : '有找到「'+entry.name+'」，但這個門牌不在任何投遞範圍內，請檢查門牌號碼';
+  }else{
+    const top=hits[0].m.score;
+    const topZips=[...new Set(hits.filter(h=>h.m.score===top).map(h=>h.zip))];
+    res.ambiguous = topZips.length>1;
+    if(res.ambiguous) res.notes.push({t:'warn',m:'有 '+topZips.length+' 個郵遞區號同樣符合，請參考下方規則判斷。'});
+    if(hits.some(x=>x.m.floorUnknown)) res.notes.push({t:'warn',m:'這個門牌依樓層分區，請在地址加上樓層（如「5樓」）以取得精確結果。'});
+    if(ad.num==null && ad.lane==null && ad.alley==null && hits[0].sc.kind!=='all') res.notes.push({t:'warn',m:'沒有輸入門牌號碼，結果可能不準確。'});
+  }
+  return res;
+}
+
+function stdAddress(ad){
+  const C=INDEX.get(ad.city), A=C.areas.get(ad.area);
+  let s=C.name+A.name+ad.roadName;
+  if(ad.lane!=null) s+=ad.lane+(ad.laneSub?'之'+ad.laneSub:'')+'巷';
+  if(ad.alley!=null) s+=ad.alley+(ad.alleySub?'之'+ad.alleySub:'')+'弄';
+  if(ad.num!=null) s+=ad.num+(ad.sub?'之'+ad.sub:'')+'號';
+  if(ad.floor!=null) s+=(ad.floor<0?'地下'+(-ad.floor):ad.floor)+'樓';
+  return s;
+}
+
+function enAddress(ad,zip){
+  const C=INDEX.get(ad.city), A=C.areas.get(ad.area), R=A.roads.get(ad.road);
+  const p=[];
+  if(ad.floor!=null) p.push(ad.floor<0?'B'+(-ad.floor):ad.floor+'F.');
+  if(ad.num!=null) p.push('No. '+ad.num+(ad.sub?'-'+ad.sub:''));
+  if(ad.alley!=null) p.push('Aly. '+ad.alley+(ad.alleySub?'-'+ad.alleySub:''));
+  if(ad.lane!=null) p.push('Ln. '+ad.lane+(ad.laneSub?'-'+ad.laneSub:''));
+  if(R.en) p.push(R.en);
+  if(A.en) p.push(A.en);
+  p.push(C.en+(zip?' '+zip:''));
+  p.push('Taiwan (R.O.C.)');
+  return p.join(', ');
+}
+
+if(typeof module!=='undefined') module.exports={initData,lookup,parseScope,parseAddress,stdAddress,enAddress,norm};
+</script>
+<script>
+if(typeof document!=='undefined'){
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ICON_COPY='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+const ICON_REDO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>';
+const ICON_DEL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+const copyBtn=(text,title)=>'<button class="ic" type="button" title="'+esc(title||'複製')+'" data-copy="'+esc(text)+'">'+ICON_COPY+'</button>';
+
+/* ---- 查詢紀錄（存在瀏覽器） ---- */
+const HKEY='zip33_history_v1';
+let HIST=[];
+try{ HIST=JSON.parse(localStorage.getItem(HKEY)||'[]'); if(!Array.isArray(HIST)) HIST=[]; }catch(e){ HIST=[]; }
+function saveHist(){ try{ localStorage.setItem(HKEY,JSON.stringify(HIST.slice(0,300))); }catch(e){} }
+function addHist(item){
+  HIST=HIST.filter(h=>h.q!==item.q);
+  HIST.unshift(item); HIST=HIST.slice(0,300); saveHist();
+  renderHist();
+}
+function renderRecent(){ return;
+  const r=HIST.slice(0,6);
+  $('recent').innerHTML = r.length ? '<span>近期查詢：</span>'+r.map(h=>'<button type="button" data-q="'+esc(h.q)+'" title="'+esc(h.q)+'">'+esc(h.q.length>22?h.q.slice(0,22)+'…':h.q)+'</button>').join('') : '';
+}
+function fmtTime(t){ const d=new Date(t); const p=n=>String(n).padStart(2,'0'); return (d.getMonth()+1)+'/'+d.getDate()+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function renderHist(){
+  $('histCount').textContent='查詢紀錄（'+HIST.length+' 筆）';
+  $('histCopy').disabled=$('histClear').disabled=!HIST.length;
+  if(!HIST.length){ $('histList').innerHTML='<div class="empty">還沒有查詢紀錄</div>'; return; }
+  $('histList').innerHTML='<div class="scroll"><table><tr><th>時間</th><th>地址</th><th>3+3</th><th></th></tr>'+
+    HIST.map((h,i)=>'<tr><td style="white-space:nowrap;color:var(--muted);font-size:13px">'+fmtTime(h.t)+'</td><td>'+esc(h.std)+'<small>'+esc(h.en)+'</small></td><td class="z">'+esc(h.zip)+'</td><td class="act">'+
+      copyBtn(h.zip+' '+h.std,'複製區號＋地址')+' <button class="ic" type="button" title="再查一次" data-q="'+esc(h.q)+'">'+ICON_REDO+'</button> <button class="ic" type="button" title="刪除" data-del="'+i+'">'+ICON_DEL+'</button></td></tr>').join('')+'</table></div>';
+}
+
+/* ---- 單筆 ---- */
+function render(res){
+  const box=$('result'); box.style.display='block';
+  let h='';
+  if(res.error){
+    h+='<div class="note bad" style="margin-top:0">'+esc(res.error)+'</div>';
+  }else{
+    const zip=res.hits[0].zip, std=stdAddress(res.ad), en=enAddress(res.ad,zip);
+    h+='<div class="zipcard" style="margin-bottom:18px"><div class="label">3+3 郵遞區號</div><div class="zrow"><div class="zip">'+esc(zip)+'</div>'+copyBtn(zip,'複製區號')+
+       '<button class="btn" type="button" data-copy="'+esc(zip+' '+std)+'">'+ICON_COPY+' 複製區號＋地址</button></div></div>';
+    h+='<div class="field"><div class="label">標準地址</div><div class="val"><div class="std">'+esc(std)+'</div>'+copyBtn(std)+'</div></div>';
+    h+='<div class="field"><div class="label">英文地址</div><div class="val"><div class="en">'+esc(en)+'</div>'+copyBtn(en)+'</div></div>';
+    addHist({q:res.ad.input,zip,std,en,t:Date.now()});
+  }
+  res.notes.forEach(n=>h+='<div class="note '+n.t+'">'+esc(n.m)+'</div>');
+  if(res.ambiguous){
+    const top=res.hits[0].m.score;
+    const others=[...new Set(res.hits.filter(x=>x.m.score===top).map(x=>x.zip))];
+    h+='<div class="note warn">可能的區號：'+others.map(esc).join('、')+'</div>';
+  }
+  box.innerHTML=h;
+}
+function doQuery(q){ $('addr').value=q; if(INDEX) render(lookup(q)); }
+
+/* ---- 批次 ---- */
+let BATCH=[];
+function runBatch(){
+  const lines=$('batchIn').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  BATCH=lines.map(l=>{
+    const r=lookup(l);
+    if(r.error) return {in:l,zip:'',std:'',en:'',msg:r.error,err:true};
+    const zip=r.hits[0].zip;
+    return {in:l,zip,std:stdAddress(r.ad),en:enAddress(r.ad,zip),msg:r.ambiguous?'多個區號符合，請確認':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
+  });
+  const ok=BATCH.filter(b=>!b.err).length;
+  let h='<div class="toolbar" style="margin-top:0;margin-bottom:12px"><div class="label" style="margin:0">共 '+BATCH.length+' 筆，成功 '+ok+' 筆'+(BATCH.length-ok?'，<span style="color:var(--bad)">'+(BATCH.length-ok)+' 筆需檢查</span>':'')+'</div><span class="sp"></span><button class="btn" id="batchCopy">'+ICON_COPY+' 複製結果（可貼回 Excel）</button></div>';
+  h+='<div class="scroll"><table><tr><th>#</th><th>原始地址</th><th>3+3</th><th>標準地址／英文地址</th></tr>'+
+    BATCH.map((b,i)=>'<tr><td style="color:var(--muted)">'+(i+1)+'</td><td>'+esc(b.in)+'</td><td class="z">'+esc(b.zip)+'</td><td class="'+(b.err?'err':b.msg?'wn':'')+'">'+
+      (b.err?esc(b.msg):esc(b.std)+'<small>'+esc(b.en)+'</small>'+(b.msg?'<small style="color:var(--warn)">'+esc(b.msg)+'</small>':''))+'</td></tr>').join('')+'</table></div>';
+  $('batchOut').innerHTML=h; $('batchOut').style.display='block';
+  $('batchCopy').onclick=()=>copyText(['原始地址\t3+3郵遞區號\t標準地址\t英文地址\t說明',...BATCH.map(b=>[b.in,b.zip,b.std,b.en,b.msg].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
+}
+
+/* ---- 上傳檔案 ---- */
+function decodeText(buf){
+  const u8=new Uint8Array(buf);
+  try{ return new TextDecoder('utf-8',{fatal:true}).decode(u8).replace(/^﻿/,''); }
+  catch(e){ try{ return new TextDecoder('big5').decode(u8); }catch(e2){ return new TextDecoder().decode(u8); } }
+}
+function parseCSV(text){
+  const out=[]; let row=[], f='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"') q=true;
+    else if(c===','||c==='\t'){row.push(f);f='';}
+    else if(c==='\n'){row.push(f);out.push(row);row=[];f='';}
+    else if(c!=='\r') f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row);}
+  return out;
+}
+let xlsxLoading=null;
+function loadXLSX(){
+  if(window.XLSX) return Promise.resolve();
+  if(!xlsxLoading) xlsxLoading=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=res; s.onerror=()=>rej(new Error('無法載入 Excel 讀取元件')); document.head.appendChild(s); });
+  return xlsxLoading;
+}
+const ADDR_RE=/(市|縣).{0,8}?(區|鄉|鎮|市).*?(路|街|道|巷|弄|號|村|里)|(路|街|道|大道).*\d+.*號/;
+function pickColumn(rows){
+  if(!rows.length) return {col:0,start:0,name:''};
+  const head=rows[0].map(x=>String(x==null?'':x).trim());
+  let col=head.findIndex(x=>/地址|住址|address|addr/i.test(x));
+  if(col>=0) return {col,start:1,name:head[col]};
+  const w=Math.max(...rows.slice(0,200).map(r=>r.length));
+  let best=0,bs=-1;
+  for(let c=0;c<w;c++){ const sc=rows.slice(0,300).filter(r=>ADDR_RE.test(norm(String(r[c]==null?'':r[c])))).length; if(sc>bs){bs=sc;best=c;} }
+  const headIsAddr=ADDR_RE.test(norm(String(rows[0][best]||'')));
+  return {col:best,start:headIsAddr?0:1,name:headIsAddr?'第 '+(best+1)+' 欄':(head[best]||'第 '+(best+1)+' 欄')};
+}
+async function loadFile(file){
+  const info=$('fileinfo'); info.style.color=''; info.textContent='讀取中…';
+  try{
+    const buf=await file.arrayBuffer();
+    let rows;
+    if(/\.(xlsx|xls)$/i.test(file.name)){
+      await loadXLSX();
+      const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+    }else{
+      const text=decodeText(buf);
+      rows=/\.csv$/i.test(file.name)||/[,\t]/.test(text.split('\n')[0]) ? parseCSV(text) : text.split(/\r?\n/).map(l=>[l]);
+    }
+    rows=rows.filter(r=>r.some(x=>String(x).trim()!==''));
+    let lines;
+    if(rows.every(r=>r.length<=1)) lines=rows.map(r=>String(r[0]).trim());
+    else{ const p=pickColumn(rows); lines=rows.slice(p.start).map(r=>String(r[p.col]==null?'':r[p.col]).trim()); info.dataset.col=p.name; }
+    lines=lines.filter(Boolean);
+    if(!lines.length) throw new Error('檔案裡沒有讀到地址');
+    $('batchIn').value=lines.join('\n');
+    info.textContent='✓ 已讀取「'+file.name+'」'+(info.dataset.col?'的「'+info.dataset.col+'」欄':'')+'，共 '+lines.length+' 筆';
+    delete info.dataset.col;
+    if(INDEX) runBatch();
+  }catch(e){ info.style.color='var(--bad)'; info.textContent='讀取失敗：'+(e.message||e); }
+}
+
+/* ---- 共用 ---- */
+let tt;
+function toast(m){const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),1700);}
+async function copyText(t,msg){ try{ await navigator.clipboard.writeText(t); toast(msg||'已複製'); }catch(e){ toast('無法複製，請手動選取'); } }
+function showTab(name){
+  document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on',x.dataset.tab===name));
+  ['one','batch','hist'].forEach(n=>$('tab-'+n).classList.toggle('hidden',n!==name));
+}
+
+document.addEventListener('click',e=>{
+  const c=e.target.closest('[data-copy]'); if(c){ copyText(c.dataset.copy); return; }
+  const q=e.target.closest('[data-q]'); if(q){ showTab('one'); doQuery(q.dataset.q); window.scrollTo({top:0,behavior:'smooth'}); return; }
+  const d=e.target.closest('[data-del]'); if(d){ HIST.splice(+d.dataset.del,1); saveHist(); renderHist(); renderRecent(); return; }
+  const t=e.target.closest('[data-tab]'); if(t) showTab(t.dataset.tab);
+});
+$('form').addEventListener('submit',e=>{ e.preventDefault(); const v=$('addr').value.trim(); if(v&&INDEX) render(lookup(v)); });
+$('batchGo').onclick=runBatch;
+$('histCopy').onclick=()=>copyText(['時間\t3+3郵遞區號\t標準地址\t英文地址',...HIST.map(h=>[new Date(h.t).toLocaleString('zh-TW'),h.zip,h.std,h.en].join('\t'))].join('\n'),'已複製 '+HIST.length+' 筆紀錄');
+let clearArmed=false;
+$('histClear').onclick=()=>{
+  if(!clearArmed){ clearArmed=true; $('histClear').textContent='再按一次確認清除'; setTimeout(()=>{clearArmed=false; $('histClear').textContent='清除紀錄';},3000); return; }
+  HIST=[]; saveHist(); renderHist(); renderRecent(); clearArmed=false; $('histClear').textContent='清除紀錄'; toast('已清除查詢紀錄');
+};
+$('pick').onclick=()=>$('file').click();
+$('file').onchange=e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); e.target.value=''; };
+const drop=$('drop');
+['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0]; if(f) loadFile(f);});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{ e.preventDefault(); const f=e.dataTransfer&&e.dataTransfer.files[0]; if(f){ showTab('batch'); loadFile(f);} });
+
+renderHist();
+loadData().then(()=>{
+  $('status').textContent='資料版本 '+DATAVER+'・'+NROWS.toLocaleString()+' 條投遞範圍';
+  $('go').disabled=false; $('batchGo').disabled=false;
+  $('addr').focus();
+}).catch(err=>{
+  $('status').innerHTML='<span style="color:var(--bad)">資料載入失敗：'+esc(err.message||err)+'（請使用新版 Chrome / Edge / Safari / Firefox）</span>';
+});
+}
+</script>
+</body>
+</html>
