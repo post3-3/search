@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
 <title>3+3 郵遞區號查詢器</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230d6239%27/%3E%3Ccircle cx=%2714%27 cy=%2714%27 r=%277%27 fill=%27none%27 stroke=%27white%27 stroke-width=%273%27/%3E%3Cpath d=%27M19.5 19.5L25 25%27 stroke=%27white%27 stroke-width=%273.2%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
 <style>
@@ -112,9 +115,9 @@ td.act .ic{width:30px;height:30px}
   <section id="tab-batch" class="hidden">
     <div class="card">
       <div class="drop" id="drop">
-        拖曳 <b>Excel（.xlsx / .xls）</b>、<b>CSV</b> 或 <b>TXT</b> 檔到這裡，或
+        拖曳 <b>Excel（.xlsx）</b>、<b>CSV</b> 或 <b>TXT</b> 檔到這裡，或
         <button class="btn" id="pick" type="button" style="margin-left:4px">選擇檔案</button>
-        <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt" hidden>
+        <input type="file" id="file" accept=".xlsx,.csv,.txt" hidden>
         <div class="fileinfo" id="fileinfo"></div>
       </div>
       <div class="label">或直接貼上，一行一個地址</div>
@@ -137,7 +140,7 @@ td.act .ic{width:30px;height:30px}
     </div>
   </section>
 
-  <p class="foot">比對官方「投遞範圍」規則（單雙號、連續號、巷弄、附號、樓層），並自動校正錯字與舊縣市名稱。<br>查詢紀錄只存在這個瀏覽器。重要郵件寄出前，建議以中華郵政官網再確認一次。</p>
+  <p class="foot">比對官方「投遞範圍」規則（單雙號、連續號、巷弄、附號、樓層），並自動校正錯字與舊縣市名稱。<br>查詢紀錄只存在這個瀏覽器。重要郵件寄出前，建議以中華郵政官網再確認一次。<br><b>本工具非中華郵政官方服務。</b></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -536,11 +539,67 @@ function parseCSV(text){
   if(f!==''||row.length){row.push(f);out.push(row);}
   return out;
 }
-let xlsxLoading=null;
-function loadXLSX(){
-  if(window.XLSX) return Promise.resolve();
-  if(!xlsxLoading) xlsxLoading=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=res; s.onerror=()=>rej(new Error('無法載入 Excel 讀取元件')); document.head.appendChild(s); });
-  return xlsxLoading;
+/* 內建 .xlsx 讀取（不使用外部套件） */
+async function readZip(buf){
+  const dv=new DataView(buf), u8=new Uint8Array(buf);
+  let eocd=-1;
+  for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-70000);i--){ if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;} }
+  if(eocd<0) throw new Error('不是有效的 Excel 檔（.xlsx）');
+  const n=dv.getUint16(eocd+10,true); let p=dv.getUint32(eocd+16,true);
+  const files=new Map();
+  for(let k=0;k<n;k++){
+    if(dv.getUint32(p,true)!==0x02014b50) break;
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), usize=dv.getUint32(p+24,true);
+    const nl=dv.getUint16(p+28,true), el=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), off=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u8.subarray(p+46,p+46+nl));
+    files.set(name.replace(/^\//,''),{method,csize,usize,off});
+    p+=46+nl+el+cl;
+  }
+  return async name=>{
+    const f=files.get(name); if(!f) return null;
+    if(f.usize>200*1024*1024) throw new Error('檔案過大');
+    const ln=dv.getUint16(f.off+26,true), le=dv.getUint16(f.off+28,true);
+    const data=u8.subarray(f.off+30+ln, f.off+30+ln+f.csize);
+    if(f.method===0) return new TextDecoder().decode(data);
+    if(f.method!==8) throw new Error('不支援的壓縮格式');
+    const ds=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(ds).text();
+  };
+}
+async function readXlsx(buf){
+  const get=await readZip(buf);
+  const xml=t=>new DOMParser().parseFromString(t,'application/xml');
+  const tags=(node,name)=>[...node.getElementsByTagNameNS('*',name)];
+  // 找第一個工作表
+  let sheetPath='xl/worksheets/sheet1.xml';
+  const wb=await get('xl/workbook.xml'), rels=await get('xl/_rels/workbook.xml.rels');
+  if(wb&&rels){
+    const first=tags(xml(wb),'sheet')[0];
+    const rid=first&&(first.getAttribute('r:id')||[...first.attributes].find(a=>/id$/i.test(a.name)&&a.name!=='sheetId')?.value);
+    const rel=tags(xml(rels),'Relationship').find(r=>r.getAttribute('Id')===rid);
+    if(rel){ const t=rel.getAttribute('Target'); sheetPath=t.startsWith('/')?t.slice(1):'xl/'+t.replace(/^\.\//,''); }
+  }
+  const ssText=await get('xl/sharedStrings.xml');
+  const shared=ssText?tags(xml(ssText),'si').map(si=>tags(si,'t').map(t=>t.textContent).join('')):[];
+  const sheet=await get(sheetPath);
+  if(!sheet) throw new Error('讀不到工作表內容');
+  const colIdx=ref=>{ const m=/^([A-Z]+)/.exec(ref||''); if(!m) return -1; let n=0; for(const ch of m[1]) n=n*26+ch.charCodeAt(0)-64; return n-1; };
+  const rows=[];
+  for(const r of tags(xml(sheet),'row')){
+    const row=[]; let auto=0;
+    for(const c of tags(r,'c')){
+      let i=colIdx(c.getAttribute('r')); if(i<0) i=auto; auto=i+1;
+      if(i>500) continue;
+      const t=c.getAttribute('t'), v=tags(c,'v')[0];
+      let val='';
+      if(t==='s') val=v?(shared[+v.textContent]||''):'';
+      else if(t==='inlineStr') val=tags(c,'t').map(x=>x.textContent).join('');
+      else val=v?v.textContent:'';
+      row[i]=val;
+    }
+    rows.push(Array.from(row,x=>x==null?'':x));
+  }
+  return rows;
 }
 const ADDR_RE=/(市|縣).{0,8}?(區|鄉|鎮|市).*?(路|街|道|巷|弄|號|村|里)|(路|街|道|大道).*\d+.*號/;
 function pickColumn(rows){
@@ -559,10 +618,10 @@ async function loadFile(file){
   try{
     const buf=await file.arrayBuffer();
     let rows;
-    if(/\.(xlsx|xls)$/i.test(file.name)){
-      await loadXLSX();
-      const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
-      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+    if(file.size>50*1024*1024) throw new Error('檔案超過 50 MB');
+    if(/\.xls$/i.test(file.name)) throw new Error('不支援舊版 .xls，請在 Excel 另存為 .xlsx 或 CSV 再上傳');
+    if(/\.xlsx$/i.test(file.name)){
+      rows=await readXlsx(buf);
     }else{
       const text=decodeText(buf);
       rows=/\.csv$/i.test(file.name)||/[,\t]/.test(text.split('\n')[0]) ? parseCSV(text) : text.split(/\r?\n/).map(l=>[l]);
