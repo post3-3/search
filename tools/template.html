@@ -57,6 +57,11 @@ button{font:inherit;cursor:pointer}
 .ic svg{width:17px;height:17px}
 .zrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .zipcard{background:var(--g0);border:1px solid var(--g1);border-radius:12px;padding:14px 16px}
+.sel{width:100%;font:inherit;font-size:16px;padding:11px 12px;border:1.5px solid var(--g6);border-radius:11px;background:#fff;color:var(--ink);outline:none}
+.sel:focus{box-shadow:0 0 0 4px var(--g1)}
+.sel-sm{font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:4px;border-color:#e0b25c;background:var(--warn-soft)}
+.pick{margin-bottom:16px}
+#pickOut:not(:empty){margin-top:4px}
 .note{font-size:13px;margin-top:10px;padding:9px 12px;border-radius:9px}
 .note.warn{background:var(--warn-soft);color:var(--warn)}
 .note.bad{background:var(--bad-soft);color:var(--bad)}
@@ -104,7 +109,7 @@ td.act .ic{width:30px;height:30px}
     <div class="card">
       <div class="label">輸入完整地址</div>
       <form id="form">
-        <input type="text" id="addr" placeholder="例：基隆市中正區北寧路2號" autocomplete="off">
+        <input type="text" id="addr" placeholder="例：基隆市中正區北寧路2號（縣市、區可省略）" autocomplete="off">
         <button class="primary" id="go" type="submit" disabled>查詢</button>
       </form>
     </div>
@@ -207,68 +212,71 @@ function parseAddress(input){
   s=s.replace(/\([^)]*\)/g,'').replace(/[「」『』【】\[\]]/g,'');
   s=s.replace(/^\d{3,6}/,'').replace(/^(臺灣省?|中華民國)/,'');
   s=s.replace(/(\d+)-(\d+)號/g,'$1之$2號').replace(/(\d+)號-(\d+)/g,'$1號之$2').replace(/(\d+)[Ff](?![a-z])/g,'$1樓');
-  const out={input,s,city:null,area:null,road:null,roadName:null,lane:null,laneSub:0,alley:null,alleySub:0,num:null,sub:0,floor:null,notes:[]};
+  const out={input,s,city:null,area:null,road:null,roadName:null,lane:null,laneSub:0,alley:null,alleySub:0,num:null,sub:0,floor:null,notes:[],cands:[],cityGiven:false,areaGiven:false};
   let rest=s;
 
   // 縣市
   for(const old in OLD_CITY) if(rest.startsWith(old)){ rest=OLD_CITY[old]+rest.slice(old.length); out.notes.push('「'+old+'」已改制為「'+OLD_CITY[old]+'」'); break; }
   const cities=[...INDEX.keys()];
   const c=cities.filter(x=>rest.startsWith(x)).sort((a,b)=>b.length-a.length)[0];
-  if(c){out.city=c; rest=rest.slice(c.length);}
+  if(c){out.city=c; out.cityGiven=true; rest=rest.slice(c.length);}
 
   // 鄉鎮市區
   const tryArea=(city)=>{
     const areas=INDEX.get(city).areas;
     let a=[...areas.keys()].filter(x=>rest.startsWith(x)).sort((x,y)=>y.length-x.length)[0];
     if(a) return [a,a.length];
-    // 改制前：板橋市 → 板橋區
     for(const k of areas.keys()){
-      if(k.endsWith('區')){ const base=k.slice(0,-1); const m=rest.match(new RegExp('^'+base+'(市|鎮|鄉)')); if(m) return [k,m[0].length,true]; }
+      if(k.endsWith('區')){ const base=k.slice(0,-1); if(base.length<2) continue; const m=rest.match(new RegExp('^'+base+'(市|鎮|鄉)')); if(m) return [k,m[0].length,true]; }
     }
     return null;
   };
+  let pools=[];
   if(out.city){
     const a=tryArea(out.city);
-    if(a){out.area=a[0]; rest=rest.slice(a[1]); if(a[2]) out.notes.push('已改用新行政區名「'+INDEX.get(out.city).areas.get(a[0]).name+'」');}
+    if(a){ out.area=a[0]; out.areaGiven=true; rest=rest.slice(a[1]); if(a[2]) out.notes.push('已改用新行政區名「'+INDEX.get(out.city).areas.get(a[0]).name+'」'); pools=[[out.city,out.area]]; }
+    else pools=[...INDEX.get(out.city).areas.keys()].map(a=>[out.city,a]);
   }else{
     const hits=[];
-    for(const city of cities){const a=tryArea(city); if(a) hits.push([city,a]);}
-    if(hits.length===1){out.city=hits[0][0]; out.area=hits[0][1][0]; rest=rest.slice(hits[0][1][1]);}
-    else if(hits.length>1) out.ambiguousArea=hits.map(h=>INDEX.get(h[0]).name);
+    for(const city of cities){ const a=tryArea(city); if(a) hits.push([city,a]); }
+    if(hits.length){
+      // 只寫鄉鎮市區（可能多個縣市同名）
+      const len=Math.max(...hits.map(h=>h[1][1]));
+      const hs=hits.filter(h=>h[1][1]===len);
+      pools=hs.map(h=>[h[0],h[1][0]]); out.areaGiven=true; rest=rest.slice(len);
+    }else{
+      pools=[]; for(const city of cities) for(const a of INDEX.get(city).areas.keys()) pools.push([city,a]);
+    }
   }
-  if(!out.city) return out;
 
-  // 路街（找最長、最早出現的路名；找不到再查錯字對照）
-  const pools=[];
-  if(out.area) pools.push(out.area); else pools.push(...INDEX.get(out.city).areas.keys());
+  // 路街：在所有可能的縣市／區中找最長、最早出現的路名；全部同名者都列為候選
   const findRoad=(useAlias)=>{
     let best=null;
-    for(const ar of pools){
-      const roads=INDEX.get(out.city).areas.get(ar).roads;
-      const cand = useAlias ? (ALIAS.get(out.city+'|'+ar)||new Map()) : roads;
+    for(const [ci,ar] of pools){
+      const cand = useAlias ? (ALIAS.get(ci+'|'+ar)||null) : INDEX.get(ci).areas.get(ar).roads;
+      if(!cand) continue;
       for(const key of cand.keys()){
-        if(!key) continue;
+        if(!key || (best && key.length<best.len)) continue;
         const k=rest.indexOf(key); if(k<0) continue;
-        const target = useAlias ? cand.get(key) : key;
-        if(!best || key.length>best.len || (key.length===best.len && k<best.k)) best={road:target,len:key.length,k,ar,typed:key};
+        if(!best || key.length>best.len || (key.length===best.len && k<best.k)) best={len:key.length,k,key};
       }
     }
-    return best;
+    if(!best) return null;
+    const list=[];
+    for(const [ci,ar] of pools){
+      if(useAlias){ const m=ALIAS.get(ci+'|'+ar); if(m&&m.has(best.key)) list.push({city:ci,area:ar,road:m.get(best.key)}); }
+      else if(INDEX.get(ci).areas.get(ar).roads.has(best.key)) list.push({city:ci,area:ar,road:best.key});
+    }
+    return {...best,list};
   };
   let best=findRoad(false), viaAlias=false;
-  // 若路名後面緊接的不是巷弄號等，可能是錯字／簡寫路名更長，試別名
   const alt=findRoad(true);
   if(alt && (!best || alt.len>best.len)){ best=alt; viaAlias=true; }
   if(best){
-    if(!out.area){
-      const others=pools.filter(ar=>INDEX.get(out.city).areas.get(ar).roads.has(best.road));
-      if(others.length>1) out.ambiguousRoad=others.map(ar=>INDEX.get(out.city).areas.get(ar).name);
-      out.area=best.ar;
-    }
-    out.road=best.road;
-    out.roadName=INDEX.get(out.city).areas.get(out.area).roads.get(best.road).name;
-    if(viaAlias) out.notes.push('「'+best.typed+'」已校正為「'+out.roadName+'」');
+    out.cands=best.list.map(x=>({...x,roadName:INDEX.get(x.city).areas.get(x.area).roads.get(x.road).name}));
+    if(viaAlias) out.notes.push('「'+best.key+'」已校正為「'+out.cands[0].roadName+'」');
     rest=rest.slice(best.k+best.len);
+    const f=out.cands[0]; out.city=out.city||f.city; out.area=out.area||f.area; out.road=f.road; out.roadName=f.roadName;
   }
   out.rest=rest;
   let m;
@@ -366,19 +374,10 @@ function matchScope(sc, ad){
 }
 
 /* ============ 查詢 ============ */
-function lookup(input){
-  const ad=parseAddress(input);
-  const res={ad,hits:[],all:[],notes:ad.notes.map(m=>({t:'info',m}))};
-  if(!ad.city){
-    res.error = ad.ambiguousArea ? '「'+ad.ambiguousArea.join('、')+'」都有這個鄉鎮市區，請加上縣市' : '找不到縣市，請確認地址開頭是否為縣市名稱（如「臺北市」）';
-    return res;
-  }
-  if(!ad.road){
-    const cn=INDEX.get(ad.city).name, an=ad.area?INDEX.get(ad.city).areas.get(ad.area).name:'';
-    res.error='在「'+cn+an+'」找不到對應的路街名稱'+(ad.area?'':'（也沒有辨識到鄉鎮市區）');
-    return res;
-  }
-  if(ad.ambiguousRoad) res.notes.push({t:'warn',m:'地址沒有寫鄉鎮市區，「'+ad.roadName+'」在 '+ad.ambiguousRoad.join('、')+' 都有，先以 '+INDEX.get(ad.city).areas.get(ad.area).name+' 比對，建議補上區名。'});
+function placeName(c,a){ const C=INDEX.get(c); return C.name+C.areas.get(a).name; }
+function evalCandidate(base, cand, allowAreaFix){
+  const ad={...base, city:cand.city, area:cand.area, road:cand.road, roadName:cand.roadName};
+  const res={ad,hits:[],all:[],notes:base.notes.map(m=>({t:'info',m}))};
   let entry=INDEX.get(ad.city).areas.get(ad.area).roads.get(ad.road);
   res.all=entry.rules.map((x,i)=>({i,zip:x[0],raw:x[1],sc:parseScope(x[1])}));
   const run=a=>res.all.map(x=>({...x,m:matchScope(x.sc,a)})).filter(x=>x.m);
@@ -389,7 +388,7 @@ function lookup(input){
   }
   if(!hits.length && ad.floor!=null) hits=run({...ad,floor:null});
   // 寫的區找不到門牌 → 同縣市其他區的同名路
-  if(!hits.length && !ad.ambiguousRoad){
+  if(!hits.length && allowAreaFix){
     const C=INDEX.get(ad.city);
     for(const [ak,A] of C.areas){
       if(ak===ad.area || !A.roads.has(ad.road)) continue;
@@ -406,16 +405,37 @@ function lookup(input){
   if(!hits.length){
     res.error = (ad.num==null && ad.lane==null && ad.alley==null)
       ? '「'+entry.name+'」依門牌分成不同郵遞區號，請輸入門牌號碼'
-      : '有找到「'+entry.name+'」，但這個門牌不在任何投遞範圍內，請檢查門牌號碼';
+      : '有找到「'+placeName(ad.city,ad.area)+entry.name+'」，但這個門牌不在任何投遞範圍內，請檢查門牌號碼';
   }else{
     const top=hits[0].m.score;
     const topZips=[...new Set(hits.filter(h=>h.m.score===top).map(h=>h.zip))];
     res.ambiguous = topZips.length>1;
-    if(res.ambiguous) res.notes.push({t:'warn',m:'有 '+topZips.length+' 個郵遞區號同樣符合，請參考下方規則判斷。'});
+    if(res.ambiguous) res.notes.push({t:'warn',m:'有 '+topZips.length+' 個郵遞區號同樣符合，請確認門牌或樓層。'});
     if(hits.some(x=>x.m.floorUnknown)) res.notes.push({t:'warn',m:'這個門牌依樓層分區，請在地址加上樓層（如「5樓」）以取得精確結果。'});
     if(ad.num==null && ad.lane==null && ad.alley==null && hits[0].sc.kind!=='all') res.notes.push({t:'warn',m:'沒有輸入門牌號碼，結果可能不準確。'});
   }
   return res;
+}
+function lookup(input){
+  const ad=parseAddress(input);
+  if(!ad.cands.length){
+    const res={ad,hits:[],all:[],notes:ad.notes.map(m=>({t:'info',m}))};
+    if(ad.cityGiven) res.error='在「'+INDEX.get(ad.city).name+(ad.area?INDEX.get(ad.city).areas.get(ad.area).name:'')+'」找不到對應的路街名稱';
+    else res.error='找不到符合的路街名稱，請確認地址是否正確';
+    return res;
+  }
+  const single=ad.cands.length===1;
+  const results=ad.cands.map(c=>evalCandidate(ad,c,single && ad.areaGiven && ad.cityGiven));
+  const ok=results.filter(r=>!r.error);
+  if(ok.length===1){
+    const r=ok[0];
+    if(!ad.cityGiven || !ad.areaGiven) r.notes.unshift({t:'info',m:'已自動判斷為「'+placeName(r.ad.city,r.ad.area)+'」'+(ad.cands.length>1?'（其他地區的「'+r.ad.roadName+'」沒有這個門牌）':'')});
+    return r;
+  }
+  if(ok.length>1){
+    return {ad,hits:[],all:[],notes:ad.notes.map(m=>({t:'info',m})),choices:ok.map(r=>({label:placeName(r.ad.city,r.ad.area),zip:r.hits[0].zip,res:r}))};
+  }
+  return results[0];
 }
 
 function stdAddress(ad){
@@ -478,8 +498,14 @@ function renderHist(){
 }
 
 /* ---- 單筆 ---- */
-function render(res){
-  const box=$('result'); box.style.display='block';
+function choiceSelect(choices,attrs,placeholder){
+  const groups=new Map();
+  choices.forEach((c,i)=>{ const city=INDEX.get(c.res.ad.city).name; if(!groups.has(city)) groups.set(city,[]); groups.get(city).push([c,i]); });
+  let o='<select '+attrs+'><option value="">'+esc(placeholder)+'</option>';
+  for(const [city,list] of groups) o+='<optgroup label="'+esc(city)+'">'+list.map(([c,i])=>'<option value="'+i+'">'+esc(c.label)+'　'+esc(c.zip)+'</option>').join('')+'</optgroup>';
+  return o+'</select>';
+}
+function resultHTML(res){
   let h='';
   if(res.error){
     h+='<div class="note bad" style="margin-top:0">'+esc(res.error)+'</div>';
@@ -489,36 +515,67 @@ function render(res){
        '<button class="btn" type="button" data-copy="'+esc(zip+' '+std)+'">'+ICON_COPY+' 複製區號＋地址</button></div></div>';
     h+='<div class="field"><div class="label">標準地址</div><div class="val"><div class="std">'+esc(std)+'</div>'+copyBtn(std)+'</div></div>';
     h+='<div class="field"><div class="label">英文地址</div><div class="val"><div class="en">'+esc(en)+'</div>'+copyBtn(en)+'</div></div>';
-    addHist({q:res.ad.input,zip,std,en,t:Date.now()});
+    addHist({q:std,zip,std,en,t:Date.now()});
   }
   res.notes.forEach(n=>h+='<div class="note '+n.t+'">'+esc(n.m)+'</div>');
-  if(res.ambiguous){
-    const top=res.hits[0].m.score;
-    const others=[...new Set(res.hits.filter(x=>x.m.score===top).map(x=>x.zip))];
-    h+='<div class="note warn">可能的區號：'+others.map(esc).join('、')+'</div>';
-  }
-  box.innerHTML=h;
+  return h;
+}
+function render(res){
+  const box=$('result'); box.style.display='block';
+  if(!res.choices){ box.innerHTML=resultHTML(res); return; }
+  const road=res.choices[0].res.ad.roadName;
+  box.innerHTML='<div class="pick"><div class="label">有 '+res.choices.length+' 個地區都有「'+esc(road)+'」這個門牌，請選擇縣市與鄉鎮市區</div>'+
+    choiceSelect(res.choices,'id="pickSel" class="sel"','請選擇…')+'</div><div id="pickOut"></div>'+
+    res.notes.map(n=>'<div class="note '+n.t+'">'+esc(n.m)+'</div>').join('');
+  $('pickSel').onchange=e=>{ const v=e.target.value; $('pickOut').innerHTML = v==='' ? '' : resultHTML(res.choices[+v].res); };
+  $('pickSel').focus();
 }
 function doQuery(q){ $('addr').value=q; if(INDEX) render(lookup(q)); }
 
 /* ---- 批次 ---- */
 let BATCH=[];
+function rowFrom(l,r){
+  if(r.error) return {in:l,zip:'',std:'',en:'',msg:r.error,err:true};
+  const zip=r.hits[0].zip;
+  const auto=r.notes.find(n=>/^已自動判斷/.test(n.m));
+  return {in:l,zip,std:stdAddress(r.ad),en:enAddress(r.ad,zip),msg:r.ambiguous?'多個區號符合，請確認':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
+}
+function batchRowHTML(b,i){
+  const cls=b.err?'err':(b.msg?'wn':'');
+  let z=esc(b.zip), d;
+  if(b.choices){
+    z=b.zip?esc(b.zip):'';
+    d=choiceSelect(b.choices,'class="sel sel-sm" data-row="'+i+'"','有 '+b.choices.length+' 個地區同名，請選擇…').replace('value="'+b.pick+'"','value="'+b.pick+'" selected')+
+      (b.std?'<div>'+esc(b.std)+'<small>'+esc(b.en)+'</small></div>':'');
+  }else d = b.err?esc(b.msg):esc(b.std)+'<small>'+esc(b.en)+'</small>'+(b.msg?'<small style="color:var(--warn)">'+esc(b.msg)+'</small>':'');
+  return '<td style="color:var(--muted)">'+(i+1)+'</td><td>'+esc(b.in)+'</td><td class="z">'+z+'</td><td class="'+(b.choices&&!b.std?'wn':cls)+'">'+d+'</td>';
+}
+function batchSummary(){
+  const ok=BATCH.filter(b=>!b.err&&b.zip).length, pick=BATCH.filter(b=>b.choices&&!b.zip).length, bad=BATCH.filter(b=>b.err).length;
+  return '共 '+BATCH.length+' 筆，成功 '+ok+' 筆'+(pick?'，<span style="color:var(--warn)">'+pick+' 筆待選擇地區</span>':'')+(bad?'，<span style="color:var(--bad)">'+bad+' 筆需檢查</span>':'');
+}
 function runBatch(){
   const lines=$('batchIn').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   BATCH=lines.map(l=>{
     const r=lookup(l);
-    if(r.error) return {in:l,zip:'',std:'',en:'',msg:r.error,err:true};
-    const zip=r.hits[0].zip;
-    return {in:l,zip,std:stdAddress(r.ad),en:enAddress(r.ad,zip),msg:r.ambiguous?'多個區號符合，請確認':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
+    if(r.choices) return {in:l,zip:'',std:'',en:'',msg:'有多個地區同名，請選擇',err:false,choices:r.choices,pick:''};
+    return rowFrom(l,r);
   });
-  const ok=BATCH.filter(b=>!b.err).length;
-  let h='<div class="toolbar" style="margin-top:0;margin-bottom:12px"><div class="label" style="margin:0">共 '+BATCH.length+' 筆，成功 '+ok+' 筆'+(BATCH.length-ok?'，<span style="color:var(--bad)">'+(BATCH.length-ok)+' 筆需檢查</span>':'')+'</div><span class="sp"></span><button class="btn" id="batchCopy">'+ICON_COPY+' 複製結果（可貼回 Excel）</button></div>';
+  let h='<div class="toolbar" style="margin-top:0;margin-bottom:12px"><div class="label" style="margin:0" id="batchSum">'+batchSummary()+'</div><span class="sp"></span><button class="btn" id="batchCopy">'+ICON_COPY+' 複製結果（可貼回 Excel）</button></div>';
   h+='<div class="scroll"><table><tr><th>#</th><th>原始地址</th><th>3+3</th><th>標準地址／英文地址</th></tr>'+
-    BATCH.map((b,i)=>'<tr><td style="color:var(--muted)">'+(i+1)+'</td><td>'+esc(b.in)+'</td><td class="z">'+esc(b.zip)+'</td><td class="'+(b.err?'err':b.msg?'wn':'')+'">'+
-      (b.err?esc(b.msg):esc(b.std)+'<small>'+esc(b.en)+'</small>'+(b.msg?'<small style="color:var(--warn)">'+esc(b.msg)+'</small>':''))+'</td></tr>').join('')+'</table></div>';
+    BATCH.map((b,i)=>'<tr id="br'+i+'">'+batchRowHTML(b,i)+'</tr>').join('')+'</table></div>';
   $('batchOut').innerHTML=h; $('batchOut').style.display='block';
-  $('batchCopy').onclick=()=>copyText(['原始地址\t3+3郵遞區號\t標準地址\t英文地址\t說明',...BATCH.map(b=>[b.in,b.zip,b.std,b.en,b.msg].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
+  $('batchCopy').onclick=()=>copyText(['原始地址\t3+3郵遞區號\t標準地址\t英文地址\t說明',...BATCH.map(b=>[b.in,b.zip,b.std,b.en,(b.choices&&!b.zip)?'有多個地區同名，請選擇':b.msg].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
 }
+document.addEventListener('change',e=>{
+  const s=e.target.closest('select[data-row]'); if(!s) return;
+  const i=+s.dataset.row, b=BATCH[i];
+  b.pick=s.value;
+  if(s.value===''){ Object.assign(b,{zip:'',std:'',en:'',msg:'有多個地區同名，請選擇'}); }
+  else{ const r=rowFrom(b.in,b.choices[+s.value].res); Object.assign(b,{zip:r.zip,std:r.std,en:r.en,msg:r.msg}); }
+  $('br'+i).innerHTML=batchRowHTML(b,i);
+  $('batchSum').innerHTML=batchSummary();
+});
 
 /* ---- 上傳檔案 ---- */
 function decodeText(buf){
