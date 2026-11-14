@@ -19,7 +19,10 @@ def main(src):
     for r in rows:
         c, a, rd = r[I['CITY']].strip(), r[I['AREA']].strip(), r[I['ROAD']].strip()
         sc = re.sub(r'[\s　]+', '', r[I['SCOOP']])
-        tree.setdefault(c, collections.OrderedDict()).setdefault(a, collections.OrderedDict()).setdefault(rd, []).append([r[I['ZIPCODE']].strip(), sc])
+        rule = [r[I['ZIPCODE']].strip(), sc]
+        dept = r[I['DEPARTMENT']].strip()   # 大宗收件戶／專屬區號的收件單位名稱
+        if dept: rule.append(dept)
+        tree.setdefault(c, collections.OrderedDict()).setdefault(a, collections.OrderedDict()).setdefault(rd, []).append(rule)
         if r[I['EAREA']].strip(): en.setdefault('a|'+c+a, r[I['EAREA']].strip())
         if r[I['EROAD']].strip(): en.setdefault('r|'+c+a+rd, r[I['EROAD']].strip())
     D = [[c, CITY_EN.get(c, ''), [[a, en.get('a|'+c+a, ''), [[rd, en.get('r|'+c+a+rd, ''), v] for rd, v in A.items()]] for a, A in C.items()]] for c, C in tree.items()]
@@ -31,6 +34,7 @@ def main(src):
         if c in tree and a in tree[c] and ok in tree[c][a]: al.setdefault(c+'|'+a, {})[w] = ok
     ver = open(os.path.join(src, 'Ver.txt')).read().strip()
     js = json.dumps({'v': ver, 'd': D, 'a': al}, ensure_ascii=False, separators=(',', ':'))
+    if os.environ.get('ZIP33_JSON'): open(os.environ['ZIP33_JSON'], 'w', encoding='utf-8').write(js)
     b64 = base64.b64encode(gzip.compress(js.encode('utf-8'), 9)).decode()
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     tpl = open(os.path.join(root, 'tools', 'template.html'), encoding='utf-8').read()

@@ -61,6 +61,14 @@ button{font:inherit;cursor:pointer}
 .sel:focus{box-shadow:0 0 0 4px var(--g1)}
 .sel-sm{font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:4px;border-color:#e0b25c;background:var(--warn-soft)}
 .pick{margin-bottom:16px}
+.optbox{margin-bottom:14px}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1.5px solid var(--line);background:#fff;border-radius:11px;padding:8px 14px;cursor:pointer;text-align:left;min-width:150px}
+.opt b{font-family:"JetBrains Mono",monospace;font-size:18px;color:var(--g7)}
+.opt span{font-size:13px;color:var(--muted)}
+.opt:hover{border-color:var(--g6)}
+.opt.on{border-color:var(--g7);background:var(--g1);box-shadow:0 0 0 3px var(--g1)}
+.dept{margin-top:6px;font-size:14px;color:var(--g8);font-weight:500}
 .bt td{vertical-align:middle;padding:10px 8px}
 .bt td.zc{white-space:nowrap;width:1%;padding-right:18px}
 .bz{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:26px;font-weight:700;color:var(--g7);letter-spacing:.05em;vertical-align:middle;margin-right:6px}
@@ -386,7 +394,7 @@ function evalCandidate(base, cand, allowAreaFix){
   const ad={...base, city:cand.city, area:cand.area, road:cand.road, roadName:cand.roadName};
   const res={ad,hits:[],all:[],notes:base.notes.map(m=>({t:'info',m}))};
   let entry=INDEX.get(ad.city).areas.get(ad.area).roads.get(ad.road);
-  res.all=entry.rules.map((x,i)=>({i,zip:x[0],raw:x[1],sc:parseScope(x[1])}));
+  res.all=entry.rules.map((x,i)=>({i,zip:x[0],raw:x[1],dept:x[2]||'',sc:parseScope(x[1])}));
   const run=a=>res.all.map(x=>({...x,m:matchScope(x.sc,a)})).filter(x=>x.m);
   let hits=run(ad);
   if(!hits.length && ad.sub){
@@ -399,7 +407,7 @@ function evalCandidate(base, cand, allowAreaFix){
     const C=INDEX.get(ad.city);
     for(const [ak,A] of C.areas){
       if(ak===ad.area || !A.roads.has(ad.road)) continue;
-      const all2=A.roads.get(ad.road).rules.map((x,i)=>({i,zip:x[0],raw:x[1],sc:parseScope(x[1])}));
+      const all2=A.roads.get(ad.road).rules.map((x,i)=>({i,zip:x[0],raw:x[1],dept:x[2]||'',sc:parseScope(x[1])}));
       const h2=all2.map(x=>({...x,m:matchScope(x.sc,ad)})).filter(x=>x.m);
       if(h2.length){
         res.notes.push({t:'warn',m:'地址寫「'+C.areas.get(ad.area).name+'」，但這個門牌在「'+A.name+'」的投遞範圍內，已改用'+A.name+'。'});
@@ -417,7 +425,9 @@ function evalCandidate(base, cand, allowAreaFix){
     const top=hits[0].m.score;
     const topZips=[...new Set(hits.filter(h=>h.m.score===top).map(h=>h.zip))];
     res.ambiguous = topZips.length>1;
-    if(res.ambiguous) res.notes.push({t:'warn',m:'有 '+topZips.length+' 個郵遞區號同樣符合，請確認門牌或樓層。'});
+    res.options = topZips.map(z=>{ const hs=hits.filter(h=>h.m.score===top&&h.zip===z); const d=hs.find(h=>h.dept); return {zip:z, dept:d?d.dept:'', raw:hs[0].raw}; });
+    // 有收件單位的專屬碼放後面，一般地址優先
+    res.options.sort((a,b)=>(a.dept?1:0)-(b.dept?1:0));
     if(hits.some(x=>x.m.floorUnknown)) res.notes.push({t:'warn',m:'這個門牌依樓層分區，請在地址加上樓層（如「5樓」）以取得精確結果。'});
     if(ad.num==null && ad.lane==null && ad.alley==null && hits[0].sc.kind!=='all') res.notes.push({t:'warn',m:'沒有輸入門牌號碼，結果可能不準確。'});
   }
@@ -512,20 +522,31 @@ function choiceSelect(choices,attrs,placeholder){
   for(const [city,list] of groups) o+='<optgroup label="'+esc(city)+'">'+list.map(([c,i])=>'<option value="'+i+'">'+esc(c.label)+'　'+esc(c.zip)+'</option>').join('')+'</optgroup>';
   return o+'</select>';
 }
-function resultHTML(res){
-  let h='';
+const RES_REG=[];
+const optLabel=o=>o.dept||('投遞範圍 '+o.raw);
+function resultHTML(res,pick,rid){
+  if(rid==null){ rid=RES_REG.length; RES_REG.push(res); }
+  let h='<div class="resbox" data-rid="'+rid+'">';
   if(res.error){
     h+='<div class="note bad" style="margin-top:0">'+esc(res.error)+'</div>';
   }else{
-    const zip=res.hits[0].zip, std=stdAddress(res.ad), en=enAddress(res.ad,zip);
+    const opts=res.options&&res.options.length>1?res.options:null;
+    const sel=opts?(opts.find(o=>o.zip===pick)||opts[0]):null;
+    const zip=sel?sel.zip:res.hits[0].zip, std=stdAddress(res.ad), en=enAddress(res.ad,zip);
+    const dept=sel?sel.dept:(res.hits[0].dept||'');
+    if(opts){
+      h+='<div class="optbox"><div class="label">這個門牌有 '+opts.length+' 個 3+3 區號，請依收件對象選擇：</div><div class="opts">'+
+        opts.map(o=>'<button type="button" class="opt'+(o.zip===zip?' on':'')+'" data-opt="'+esc(o.zip)+'"><b>'+esc(o.zip)+'</b><span>'+esc(optLabel(o))+'</span></button>').join('')+'</div></div>';
+    }
     h+='<div class="zipcard" style="margin-bottom:18px"><div class="label">3+3 郵遞區號</div><div class="zrow"><div class="zip">'+esc(zip)+'</div>'+copyBtn(zip,'複製區號')+
-       '<button class="btn" type="button" data-copy="'+esc(zip+' '+std)+'">'+ICON_COPY+' 複製區號＋地址</button></div></div>';
+       '<button class="btn" type="button" data-copy="'+esc(zip+' '+std)+'">'+ICON_COPY+' 複製區號＋地址</button></div>'+
+       (dept?'<div class="dept">收件單位：'+esc(dept)+'（專屬區號）</div>':'')+'</div>';
     h+='<div class="field"><div class="label">標準地址</div><div class="val"><div class="std">'+esc(std)+'</div>'+copyBtn(std)+'</div></div>';
     h+='<div class="field"><div class="label">英文地址</div><div class="val"><div class="en">'+esc(en)+'</div>'+copyBtn(en)+'</div></div>';
     addHist({q:std,zip,std,en,t:Date.now()});
   }
   res.notes.forEach(n=>h+='<div class="note '+n.t+'">'+esc(n.m)+'</div>');
-  return h;
+  return h+'</div>';
 }
 function render(res){
   const box=$('result'); box.style.display='block';
@@ -545,11 +566,15 @@ function rowFrom(l,r){
   if(r.error) return {in:l,zip:'',std:'',en:'',msg:r.error,err:true};
   const zip=r.hits[0].zip;
   const fixed=!r.ad.cityGiven || !r.ad.areaGiven || r.notes.some(n=>/校正|改制|改用|自動判斷/.test(n.m));
-  return {in:l,zip,fixed,std:stdAddress(r.ad),en:enAddress(r.ad,zip),msg:r.ambiguous?'多個區號符合，請確認':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
+  const opts=r.options&&r.options.length>1?r.options:null;
+  const z=opts?opts[0].zip:zip;
+  return {in:l,zip:z,fixed,opts,ad:r.ad,dept:opts?opts[0].dept:(r.hits[0].dept||''),std:stdAddress(r.ad),en:enAddress(r.ad,z),msg:opts?'此門牌有多個區號，請依收件對象選擇':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
 }
 function shownAddr(b){ return b.fixed ? b.std : b.in; }
 function addrBlock(b){
-  return '<div class="ba">'+esc(shownAddr(b))+'</div>'+
+  return (b.opts?'<select class="sel sel-sm" data-optrow="'+BATCH.indexOf(b)+'">'+b.opts.map(o=>'<option value="'+esc(o.zip)+'"'+(o.zip===b.zip?' selected':'')+'>'+esc(o.zip)+'　'+esc(optLabel(o))+'</option>').join('')+'</select>':'')+
+    '<div class="ba">'+esc(shownAddr(b))+'</div>'+
+    (b.dept?'<small style="color:var(--g7)">收件單位：'+esc(b.dept)+'</small>':'')+
     (b.fixed?'<small class="orig">原輸入：'+esc(b.in)+'</small>':'')+
     '<small>'+esc(b.en)+'</small>'+
     (b.msg?'<small style="color:var(--warn)">'+esc(b.msg)+'</small>':'');
@@ -577,14 +602,17 @@ function runBatch(){
   h+='<div class="scroll"><table class="bt"><tr><th>3+3 郵遞區號</th><th>地址</th></tr>'+
     BATCH.map((b,i)=>'<tr id="br'+i+'">'+batchRowHTML(b,i)+'</tr>').join('')+'</table></div>';
   $('batchOut').innerHTML=h; $('batchOut').style.display='block';
-  $('batchCopy').onclick=()=>copyText(['3+3郵遞區號\t地址\t英文地址\t原始地址\t說明',...BATCH.map(b=>[b.zip,b.zip?shownAddr(b):'',b.en,b.in,(b.choices&&!b.zip)?'有多個地區同名，請選擇':(b.err?b.msg:(b.fixed?'已校正地址'+(b.msg?'；'+b.msg:''):b.msg))].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
+  $('batchCopy').onclick=()=>copyText(['3+3郵遞區號\t地址\t英文地址\t收件單位\t原始地址\t說明',...BATCH.map(b=>[b.zip,b.zip?shownAddr(b):'',b.en,b.dept||'',b.in,(b.choices&&!b.zip)?'有多個地區同名，請選擇':(b.err?b.msg:(b.fixed?'已校正地址'+(b.msg?'；'+b.msg:''):b.msg))].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
 }
 document.addEventListener('change',e=>{
+  const so=e.target.closest('select[data-optrow]');
+  if(so){ const i=+so.dataset.optrow, b=BATCH[i], o=b.opts.find(x=>x.zip===so.value);
+    Object.assign(b,{zip:o.zip,dept:o.dept,en:enAddress(b.ad,o.zip)}); $('br'+i).innerHTML=batchRowHTML(b,i); return; }
   const s=e.target.closest('select[data-row]'); if(!s) return;
   const i=+s.dataset.row, b=BATCH[i];
   b.pick=s.value;
   if(s.value===''){ Object.assign(b,{zip:'',std:'',en:'',msg:'有多個地區同名，請選擇'}); }
-  else{ const r=rowFrom(b.in,b.choices[+s.value].res); Object.assign(b,{zip:r.zip,std:r.std,en:r.en,msg:r.msg,fixed:r.fixed}); }
+  else{ const r=rowFrom(b.in,b.choices[+s.value].res); Object.assign(b,{zip:r.zip,std:r.std,en:r.en,msg:r.msg,fixed:r.fixed,opts:r.opts,ad:r.ad,dept:r.dept}); }
   $('br'+i).innerHTML=batchRowHTML(b,i);
   $('batchSum').innerHTML=batchSummary();
 });
@@ -719,6 +747,8 @@ function showTab(name){
 
 document.addEventListener('click',e=>{
   const c=e.target.closest('[data-copy]'); if(c){ copyText(c.dataset.copy); return; }
+  const op=e.target.closest('[data-opt]');
+  if(op){ const box=op.closest('.resbox'), rid=+box.dataset.rid; box.outerHTML=resultHTML(RES_REG[rid],op.dataset.opt,rid); return; }
   const q=e.target.closest('[data-q]'); if(q){ showTab('one'); doQuery(q.dataset.q); window.scrollTo({top:0,behavior:'smooth'}); return; }
   const d=e.target.closest('[data-del]'); if(d){ HIST.splice(+d.dataset.del,1); saveHist(); renderHist(); renderRecent(); return; }
   const t=e.target.closest('[data-tab]'); if(t) showTab(t.dataset.tab);
