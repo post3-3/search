@@ -61,6 +61,13 @@ button{font:inherit;cursor:pointer}
 .sel:focus{box-shadow:0 0 0 4px var(--g1)}
 .sel-sm{font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:4px;border-color:#e0b25c;background:var(--warn-soft)}
 .pick{margin-bottom:16px}
+.bt td{vertical-align:middle;padding:10px 8px}
+.bt td.zc{white-space:nowrap;width:1%;padding-right:18px}
+.bz{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:26px;font-weight:700;color:var(--g7);letter-spacing:.05em;vertical-align:middle;margin-right:6px}
+.bz.none{color:#c4ccc6}
+.bt .ic{width:28px;height:28px;vertical-align:middle}
+.ba{font-size:15px;font-weight:500}
+small.orig{color:var(--g7)!important}
 #pickOut:not(:empty){margin-top:4px}
 .note{font-size:13px;margin-top:10px;padding:9px 12px;border-radius:9px}
 .note.warn{background:var(--warn-soft);color:var(--warn)}
@@ -537,18 +544,23 @@ let BATCH=[];
 function rowFrom(l,r){
   if(r.error) return {in:l,zip:'',std:'',en:'',msg:r.error,err:true};
   const zip=r.hits[0].zip;
-  const auto=r.notes.find(n=>/^已自動判斷/.test(n.m));
-  return {in:l,zip,std:stdAddress(r.ad),en:enAddress(r.ad,zip),msg:r.ambiguous?'多個區號符合，請確認':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
+  const fixed=!r.ad.cityGiven || !r.ad.areaGiven || r.notes.some(n=>/校正|改制|改用|自動判斷/.test(n.m));
+  return {in:l,zip,fixed,std:stdAddress(r.ad),en:enAddress(r.ad,zip),msg:r.ambiguous?'多個區號符合，請確認':(r.hits.some(x=>x.m.floorUnknown)?'依樓層分區，請補樓層':''),err:false};
+}
+function shownAddr(b){ return b.fixed ? b.std : b.in; }
+function addrBlock(b){
+  return '<div class="ba">'+esc(shownAddr(b))+'</div>'+
+    (b.fixed?'<small class="orig">原輸入：'+esc(b.in)+'</small>':'')+
+    '<small>'+esc(b.en)+'</small>'+
+    (b.msg?'<small style="color:var(--warn)">'+esc(b.msg)+'</small>':'');
 }
 function batchRowHTML(b,i){
-  const cls=b.err?'err':(b.msg?'wn':'');
-  let z=esc(b.zip), d;
+  let z=b.zip?'<span class="bz">'+esc(b.zip)+'</span>':'<span class="bz none">—</span>', d;
   if(b.choices){
-    z=b.zip?esc(b.zip):'';
     d=choiceSelect(b.choices,'class="sel sel-sm" data-row="'+i+'"','有 '+b.choices.length+' 個地區同名，請選擇…').replace('value="'+b.pick+'"','value="'+b.pick+'" selected')+
-      (b.std?'<div>'+esc(b.std)+'<small>'+esc(b.en)+'</small></div>':'');
-  }else d = b.err?esc(b.msg):esc(b.std)+'<small>'+esc(b.en)+'</small>'+(b.msg?'<small style="color:var(--warn)">'+esc(b.msg)+'</small>':'');
-  return '<td style="color:var(--muted)">'+(i+1)+'</td><td>'+esc(b.in)+'</td><td class="z">'+z+'</td><td class="'+(b.choices&&!b.std?'wn':cls)+'">'+d+'</td>';
+      (b.std?addrBlock(b):'<div class="ba">'+esc(b.in)+'</div>');
+  }else d = b.err?'<div class="ba">'+esc(b.in)+'</div><small style="color:var(--bad)">'+esc(b.msg)+'</small>':addrBlock(b);
+  return '<td class="zc">'+z+(b.zip?copyBtn(b.zip,'複製區號'):'')+'</td><td>'+d+'</td>';
 }
 function batchSummary(){
   const ok=BATCH.filter(b=>!b.err&&b.zip).length, pick=BATCH.filter(b=>b.choices&&!b.zip).length, bad=BATCH.filter(b=>b.err).length;
@@ -562,17 +574,17 @@ function runBatch(){
     return rowFrom(l,r);
   });
   let h='<div class="toolbar" style="margin-top:0;margin-bottom:12px"><div class="label" style="margin:0" id="batchSum">'+batchSummary()+'</div><span class="sp"></span><button class="btn" id="batchCopy">'+ICON_COPY+' 複製結果（可貼回 Excel）</button></div>';
-  h+='<div class="scroll"><table><tr><th>#</th><th>原始地址</th><th>3+3</th><th>標準地址／英文地址</th></tr>'+
+  h+='<div class="scroll"><table class="bt"><tr><th>3+3 郵遞區號</th><th>地址</th></tr>'+
     BATCH.map((b,i)=>'<tr id="br'+i+'">'+batchRowHTML(b,i)+'</tr>').join('')+'</table></div>';
   $('batchOut').innerHTML=h; $('batchOut').style.display='block';
-  $('batchCopy').onclick=()=>copyText(['原始地址\t3+3郵遞區號\t標準地址\t英文地址\t說明',...BATCH.map(b=>[b.in,b.zip,b.std,b.en,(b.choices&&!b.zip)?'有多個地區同名，請選擇':b.msg].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
+  $('batchCopy').onclick=()=>copyText(['3+3郵遞區號\t地址\t英文地址\t原始地址\t說明',...BATCH.map(b=>[b.zip,b.zip?shownAddr(b):'',b.en,b.in,(b.choices&&!b.zip)?'有多個地區同名，請選擇':(b.err?b.msg:(b.fixed?'已校正地址'+(b.msg?'；'+b.msg:''):b.msg))].join('\t'))].join('\n'),'已複製 '+BATCH.length+' 筆，可直接貼到 Excel');
 }
 document.addEventListener('change',e=>{
   const s=e.target.closest('select[data-row]'); if(!s) return;
   const i=+s.dataset.row, b=BATCH[i];
   b.pick=s.value;
   if(s.value===''){ Object.assign(b,{zip:'',std:'',en:'',msg:'有多個地區同名，請選擇'}); }
-  else{ const r=rowFrom(b.in,b.choices[+s.value].res); Object.assign(b,{zip:r.zip,std:r.std,en:r.en,msg:r.msg}); }
+  else{ const r=rowFrom(b.in,b.choices[+s.value].res); Object.assign(b,{zip:r.zip,std:r.std,en:r.en,msg:r.msg,fixed:r.fixed}); }
   $('br'+i).innerHTML=batchRowHTML(b,i);
   $('batchSum').innerHTML=batchSummary();
 });
